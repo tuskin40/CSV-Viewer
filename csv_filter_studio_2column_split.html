@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSV Filter Studio</title>
+
+<link rel="stylesheet" href="csv_filter_studio_theme.css">
+<link rel="stylesheet" href="csv_filter_studio_structure.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <p class="brand-eyebrow">Local · in-browser · nothing leaves this tab</p>
+      <h1>CSV Filter <span>Studio</span></h1>
+      <p class="subtitle">Upload a CSV, build nested AND/OR filter conditions, and the table below updates live.</p>
+    </div>
+    <div class="stats-strip" id="statsStrip"></div>
+  </header>
+
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept=".csv,text/csv">
+    <div class="icon">⌁</div>
+    <div class="copy">
+      <div class="primary">Drop a CSV here, or click to browse</div>
+      <div class="secondary">Built and tested around 1000 columns × 2000 rows.</div>
+    </div>
+    <div id="fileChipHolder"></div>
+  </div>
+
+  <div id="appBody" class="hidden">
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">1</span> Filter builder</div>
+        <div class="panel-sub" id="matchSummary"></div>
+      </div>
+      <div id="filterRoot"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">2</span> Visible columns</div>
+        <div class="toolbar">
+          <button class="btn small" id="colsAllBtn">Show all</button>
+          <button class="btn small" id="colsNoneBtn">Hide all</button>
+          <button class="btn small" id="colsResetBtn">Reset to default</button>
+        </div>
+      </div>
+      <input class="col-search" id="colSearch" placeholder="Search columns to show in the table…">
+      <div class="col-grid" id="colGrid"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">3</span> Data</div>
+        <div class="toolbar">
+          <label style="font-size:12px;color:var(--fg-dim);display:flex;align-items:center;gap:6px;">
+            Rows per page
+            <select id="pageSizeSelect">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="250">250</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="result-search">
+        <span class="glyph">⌕</span>
+        <input type="text" id="resultSearchInput" placeholder="Search within the filtered results…">
+        <button class="clear-search" id="resultSearchClear" title="Clear search">✕</button>
+      </div>
+      <div class="table-scroll"><table id="dataTable"></table></div>
+      <div class="table-footer">
+        <span class="panel-sub" id="rowRange"></span>
+        <div class="pager">
+          <button class="btn small" id="prevPageBtn">← Prev</button>
+          <span id="pageIndicator"></span>
+          <button class="btn small" id="nextPageBtn">Next →</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="emptyState" class="panel empty-state">
+    <div class="glyph">▦</div>
+    <div class="msg">No data loaded yet</div>
+    <div class="sub">Upload a CSV above to start building filters.</div>
+  </div>
+
+</div>
+
+<script src="csv_filter_studio_app.js"></script>
+</body>
+</html>

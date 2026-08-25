@@ -1,0 +1,676 @@
+(function(){
+  "use strict";
+
+  // ---------- State ----------
+  let columns = [];        // string[]
+  let columnTypes = {};    // col -> 'number' | 'date' | 'text'
+  let rows = [];           // array of objects
+  let visibleCols = new Set();
+  let currentPage = 1;
+  let pageSize = 50;
+  let idCounter = 1;
+  const nextId = () => 'n' + (idCounter++);
+  let resultSearch = '';
+
+  let filterTree = { id: nextId(), type: 'group', op: 'AND', children: [] };
+
+  // ---------- DOM refs ----------
+  const uploadZone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+  const fileChipHolder = document.getElementById('fileChipHolder');
+  const appBody = document.getElementById('appBody');
+  const emptyState = document.getElementById('emptyState');
+  const statsStrip = document.getElementById('statsStrip');
+  const filterRoot = document.getElementById('filterRoot');
+  const matchSummary = document.getElementById('matchSummary');
+  const colGrid = document.getElementById('colGrid');
+  const colSearch = document.getElementById('colSearch');
+  const dataTable = document.getElementById('dataTable');
+  const rowRangeEl = document.getElementById('rowRange');
+  const pageIndicator = document.getElementById('pageIndicator');
+  const pageSizeSelect = document.getElementById('pageSizeSelect');
+  const resultSearchInput = document.getElementById('resultSearchInput');
+  const resultSearchClear = document.getElementById('resultSearchClear');
+
+  const OPERATORS = {
+    text: [
+      ['eq','equals'], ['neq','not equals'], ['contains','contains'],
+      ['ncontains','does not contain'], ['starts','starts with'], ['ends','ends with'],
+      ['empty','is empty'], ['nempty','is not empty']
+    ],
+    number: [
+      ['eq','='], ['neq','≠'], ['gt','>'], ['gte','≥'], ['lt','<'], ['lte','≤'],
+      ['between','between'], ['empty','is empty'], ['nempty','is not empty']
+    ],
+    date: [
+      ['eq','on date'], ['before','before'], ['after','after'], ['between','between dates'],
+      ['empty','is empty'], ['nempty','is not empty']
+    ]
+  };
+
+  // ---------- Built-in CSV parser (no external libraries) ----------
+  function parseCSV(text){
+    const rows = [];
+    let row = [];
+    let field = '';
+    let quoted = false;
+    for(let i=0; i<text.length; i++){
+      const c = text[i];
+      if(quoted){
+        if(c === '"'){
+          if(text[i+1] === '"'){ field += '"'; i++; }
+          else quoted = false;
+        } else field += c;
+      } else if(c === '"'){
+        quoted = true;
+      } else if(c === ','){
+        row.push(field); field = '';
+      } else if(c === '\n'){
+        row.push(field);
+        if(row.length > 1 || row[0] !== '') rows.push(row);
+        row = []; field = '';
+      } else if(c === '\r'){
+        if(text[i+1] !== '\n'){
+          row.push(field);
+          if(row.length > 1 || row[0] !== '') rows.push(row);
+          row = []; field = '';
+        }
+      } else field += c;
+    }
+    if(field !== '' || row.length){
+      row.push(field);
+      if(row.length > 1 || row[0] !== '') rows.push(row);
+    }
+    if(!rows.length) return [];
+    const headers = makeUniqueHeaders(rows[0]);
+    return [headers, ...rows.slice(1)];
+  }
+
+  function makeUniqueHeaders(headers){
+    const used = new Map();
+    return headers.map((value, index) => {
+      let name = String(value ?? '').trim() || `Column ${index + 1}`;
+      const count = used.get(name) || 0;
+      used.set(name, count + 1);
+      return count ? `${name} (${count + 1})` : name;
+    });
+  }
+
+  // ---------- Upload handling ----------
+  uploadZone.addEventListener('click', (e)=>{ if(e.target.tagName!=='BUTTON') fileInput.click(); });
+  uploadZone.addEventListener('dragover', (e)=>{ e.preventDefault(); uploadZone.classList.add('drag'); });
+  uploadZone.addEventListener('dragleave', ()=> uploadZone.classList.remove('drag'));
+  uploadZone.addEventListener('drop', (e)=>{
+    e.preventDefault(); uploadZone.classList.remove('drag');
+    if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', (e)=>{
+    if(e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file){
+    if(!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv'){
+      toast('That doesn\'t look like a CSV file.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try {
+        const parsed = parseCSV(e.target.result);
+        if(!parsed.length) throw new Error('The CSV is empty.');
+        const fields = parsed[0];
+        const data = parsed.slice(1).map(row => {
+          const obj = {};
+          fields.forEach((field, i) => obj[field] = row[i] ?? '');
+          return obj;
+        });
+        loadData(data, fields, file.name);
+      } catch(err) {
+        toast('Could not parse CSV: ' + err.message);
+      }
+    };
+    reader.onerror = function(){ toast('Could not read the selected file.'); };
+    reader.readAsText(file);
+  }
+
+  function loadData(data, fields, fileName){
+    columns = fields.filter(f => f !== undefined && f !== '');
+    rows = data;
+    columnTypes = detectTypes(columns, rows);
+
+    visibleCols = new Set(columns.slice(0, 8));
+    filterTree = { id: nextId(), type:'group', op:'AND', children: [] };
+    currentPage = 1;
+    resultSearch = '';
+    resultSearchInput.value = '';
+
+    fileChipHolder.innerHTML = '';
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML = `<b>${escapeHtml(fileName)}</b> · ${rows.length.toLocaleString()} rows × ${columns.length.toLocaleString()} cols`;
+    const rm = document.createElement('button');
+    rm.textContent = '✕';
+    rm.title = 'Remove file';
+    rm.onclick = (e)=>{ e.stopPropagation(); clearData(); };
+    chip.appendChild(rm);
+    fileChipHolder.appendChild(chip);
+
+    appBody.classList.remove('hidden');
+    emptyState.classList.add('hidden');
+
+    renderStats();
+    renderFilterTree();
+    renderColumnGrid();
+    renderTable();
+  }
+
+  function clearData(){
+    columns = []; rows = []; columnTypes = {}; visibleCols = new Set();
+    filterTree = { id: nextId(), type:'group', op:'AND', children: [] };
+    resultSearch = '';
+    resultSearchInput.value = '';
+    fileInput.value = '';
+    fileChipHolder.innerHTML = '';
+    appBody.classList.add('hidden');
+    emptyState.classList.remove('hidden');
+    statsStrip.innerHTML = '';
+  }
+
+  // Date patterns require an explicit separator so plain numbers never qualify.
+  const DATE_PATTERNS = [
+    /^\d{4}-\d{1,2}-\d{1,2}(T\d{2}:\d{2}(:\d{2})?)?$/,      // 2024-01-31, ISO w/ time
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,                            // 01/31/2024 or 1/5/24
+    /^\d{1,2}-\d{1,2}-\d{2,4}$/,                              // 31-01-2024
+    /^\d{4}\/\d{1,2}\/\d{1,2}$/,                              // 2024/01/31
+    /^[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}$/,                    // January 31, 2024
+    /^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}$/                       // 31 January 2024
+  ];
+  function looksLikeDate(v){
+    const s = String(v).trim();
+    if(!DATE_PATTERNS.some(rx => rx.test(s))) return false;
+    const t = Date.parse(s);
+    return !isNaN(t);
+  }
+
+  function detectTypes(cols, data){
+    const types = {};
+    const sampleSize = Math.min(data.length, 60);
+    cols.forEach(col=>{
+      let numericCount = 0, dateCount = 0, nonEmptyCount = 0;
+      for(let i=0;i<sampleSize;i++){
+        const v = data[i] ? data[i][col] : undefined;
+        if(v === undefined || v === null || v === '') continue;
+        nonEmptyCount++;
+        if(v !== '' && !isNaN(v) && isFinite(v)) numericCount++;
+        else if(looksLikeDate(v)) dateCount++;
+      }
+      if(nonEmptyCount > 0 && numericCount === nonEmptyCount){
+        types[col] = 'number';
+      } else if(nonEmptyCount > 0 && dateCount === nonEmptyCount){
+        types[col] = 'date';
+      } else {
+        types[col] = 'text';
+      }
+    });
+    return types;
+  }
+
+  // ---------- Filter tree rendering ----------
+  function renderFilterTree(){
+    filterRoot.innerHTML = '';
+    filterRoot.appendChild(renderGroup(filterTree, true));
+    updateMatchSummary();
+  }
+
+  function renderGroup(group, isRoot){
+    const el = document.createElement('div');
+    el.className = 'group' + (isRoot ? '' : ' nested');
+
+    const head = document.createElement('div');
+    head.className = 'group-head';
+
+    const opToggle = document.createElement('div');
+    opToggle.className = 'op-toggle';
+    ['AND','OR'].forEach(op=>{
+      const b = document.createElement('button');
+      b.textContent = op;
+      b.className = (group.op === op ? 'active' + (op==='OR' ? ' or' : '') : '');
+      b.onclick = ()=>{ group.op = op; renderFilterTree(); applyFilters(); };
+      opToggle.appendChild(b);
+    });
+
+    const label = document.createElement('span');
+    label.style.cssText = 'font-size:11px;color:var(--muted);margin-left:2px;';
+    label.textContent = isRoot ? 'match all conditions using' : 'group — match using';
+
+    const leftWrap = document.createElement('div');
+    leftWrap.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    leftWrap.appendChild(opToggle);
+    leftWrap.appendChild(label);
+
+    const actions = document.createElement('div');
+    actions.className = 'group-actions';
+
+    const addCondBtn = document.createElement('button');
+    addCondBtn.className = 'btn small';
+    addCondBtn.textContent = '+ Condition';
+    addCondBtn.disabled = visibleCols.size === 0;
+    addCondBtn.title = visibleCols.size === 0 ? 'Make at least one column visible first' : '';
+    addCondBtn.onclick = ()=>{
+      const firstCol = columns.find(c => visibleCols.has(c)) || '';
+      group.children.push({ id:nextId(), type:'condition', column: firstCol, operator:'contains', value:'', value2:'' });
+      renderFilterTree(); applyFilters();
+    };
+
+    const addGroupBtn = document.createElement('button');
+    addGroupBtn.className = 'btn small ghost';
+    addGroupBtn.textContent = '+ Nested group';
+    addGroupBtn.onclick = ()=>{
+      group.children.push({ id:nextId(), type:'group', op:'AND', children:[] });
+      renderFilterTree(); applyFilters();
+    };
+
+    actions.appendChild(addCondBtn);
+    actions.appendChild(addGroupBtn);
+
+    if(!isRoot){
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn danger small';
+      delBtn.textContent = '✕ Remove group';
+      delBtn.onclick = ()=>{ removeNode(filterTree, group.id); renderFilterTree(); applyFilters(); };
+      actions.appendChild(delBtn);
+    }
+
+    head.appendChild(leftWrap);
+    head.appendChild(actions);
+    el.appendChild(head);
+
+    const itemsWrap = document.createElement('div');
+    itemsWrap.className = 'group-items';
+
+    if(group.children.length === 0){
+      const hint = document.createElement('div');
+      hint.className = 'empty-hint';
+      hint.textContent = isRoot ? 'No conditions yet — showing all rows. Add a condition to start filtering.' : 'Empty group — add a condition or remove it.';
+      itemsWrap.appendChild(hint);
+    }
+
+    group.children.forEach((child, idx)=>{
+      if(idx > 0){
+        const sep = document.createElement('div');
+        sep.className = 'and-sep';
+        sep.textContent = group.op;
+        itemsWrap.appendChild(sep);
+      }
+      if(child.type === 'condition'){
+        itemsWrap.appendChild(renderCondition(group, child));
+      } else {
+        itemsWrap.appendChild(renderGroup(child, false));
+      }
+    });
+
+    el.appendChild(itemsWrap);
+    return el;
+  }
+
+  function renderCondition(parentGroup, cond){
+    const row = document.createElement('div');
+    row.className = 'condition';
+
+    // Column dropdown — scoped to currently visible columns.
+    const colSelect = document.createElement('select');
+    colSelect.className = 'col-select';
+    const visibleList = columns.filter(c => visibleCols.has(c));
+    if(!visibleList.includes(cond.column) && cond.column){
+      // keep the previously chosen column selectable even if it's since been hidden
+      const opt = document.createElement('option');
+      opt.value = cond.column;
+      opt.textContent = cond.column + ' (hidden)';
+      colSelect.appendChild(opt);
+    }
+    visibleList.forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      if(c === cond.column) opt.selected = true;
+      colSelect.appendChild(opt);
+    });
+    colSelect.onchange = ()=>{
+      cond.column = colSelect.value;
+      const type = columnTypes[cond.column] || 'text';
+      if(!OPERATORS[type].some(o=>o[0]===cond.operator)) cond.operator = OPERATORS[type][0][0];
+      renderFilterTree(); applyFilters();
+    };
+
+    const type = columnTypes[cond.column] || 'text';
+    const typeTag = document.createElement('span');
+    typeTag.className = 'type-tag';
+    typeTag.textContent = type;
+
+    const opSelect = document.createElement('select');
+    opSelect.className = 'op-select';
+    OPERATORS[type].forEach(([val,label])=>{
+      const o = document.createElement('option');
+      o.value = val; o.textContent = label;
+      if(val === cond.operator) o.selected = true;
+      opSelect.appendChild(o);
+    });
+    opSelect.onchange = ()=>{ cond.operator = opSelect.value; renderFilterTree(); applyFilters(); };
+
+    row.appendChild(colSelect);
+    row.appendChild(typeTag);
+    row.appendChild(opSelect);
+
+    if(cond.operator !== 'empty' && cond.operator !== 'nempty'){
+      const makeValInput = (val, onInput)=>{
+        const input = document.createElement('input');
+        if(type === 'number') input.type = 'number';
+        else if(type === 'date') input.type = 'date';
+        else input.type = 'text';
+        input.className = 'val-input';
+        if(type !== 'date') input.placeholder = 'Value…';
+        input.value = val;
+        input.oninput = onInput;
+        return input;
+      };
+
+      const valInput = makeValInput(cond.value, ()=>{ cond.value = valInput.value; applyFilters(); });
+      row.appendChild(valInput);
+
+      if(cond.operator === 'between'){
+        const andLbl = document.createElement('span');
+        andLbl.style.cssText = 'font-size:11px;color:var(--muted);';
+        andLbl.textContent = 'and';
+        const val2Input = makeValInput(cond.value2, ()=>{ cond.value2 = val2Input.value; applyFilters(); });
+        if(type === 'number') val2Input.type = 'number';
+        row.appendChild(andLbl);
+        row.appendChild(val2Input);
+      }
+    }
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn danger small';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Remove condition';
+    delBtn.onclick = ()=>{ removeNode(filterTree, cond.id); renderFilterTree(); applyFilters(); };
+    row.appendChild(delBtn);
+
+    return row;
+  }
+
+  function removeNode(node, id){
+    if(node.type !== 'group') return false;
+    const idx = node.children.findIndex(c=>c.id===id);
+    if(idx > -1){ node.children.splice(idx,1); return true; }
+    for(const child of node.children){
+      if(child.type==='group' && removeNode(child, id)) return true;
+    }
+    return false;
+  }
+
+  // ---------- Evaluation ----------
+  function evaluateGroup(group, row){
+    if(group.children.length === 0) return true;
+    const results = group.children.map(child=>{
+      return child.type === 'group' ? evaluateGroup(child, row) : evaluateCondition(child, row);
+    });
+    return group.op === 'AND' ? results.every(Boolean) : results.some(Boolean);
+  }
+
+  function evaluateCondition(cond, row){
+    if(!cond.column) return true;
+    const raw = row[cond.column];
+    const type = columnTypes[cond.column] || 'text';
+    const isEmptyVal = (raw === undefined || raw === null || String(raw).trim() === '');
+
+    if(cond.operator === 'empty') return isEmptyVal;
+    if(cond.operator === 'nempty') return !isEmptyVal;
+    if(isEmptyVal) return false;
+
+    if(type === 'number'){
+      const n = parseFloat(raw);
+      const target = parseFloat(cond.value);
+      switch(cond.operator){
+        case 'eq': return n === target;
+        case 'neq': return n !== target;
+        case 'gt': return n > target;
+        case 'gte': return n >= target;
+        case 'lt': return n < target;
+        case 'lte': return n <= target;
+        case 'between': {
+          const lo = Math.min(target, parseFloat(cond.value2));
+          const hi = Math.max(target, parseFloat(cond.value2));
+          return n >= lo && n <= hi;
+        }
+        default: return true;
+      }
+    } else if(type === 'date'){
+      const t = Date.parse(raw);
+      if(isNaN(t)) return false;
+      const target = Date.parse(cond.value);
+      switch(cond.operator){
+        case 'eq': {
+          if(isNaN(target)) return true;
+          return sameDay(t, target);
+        }
+        case 'before': return !isNaN(target) ? t < target : true;
+        case 'after': return !isNaN(target) ? t > target : true;
+        case 'between': {
+          const t2 = Date.parse(cond.value2);
+          if(isNaN(target) || isNaN(t2)) return true;
+          const lo = Math.min(target, t2), hi = Math.max(target, t2);
+          return t >= lo && t <= hi;
+        }
+        default: return true;
+      }
+    } else {
+      const s = String(raw).toLowerCase();
+      const v = String(cond.value).toLowerCase();
+      switch(cond.operator){
+        case 'eq': return s === v;
+        case 'neq': return s !== v;
+        case 'contains': return s.includes(v);
+        case 'ncontains': return !s.includes(v);
+        case 'starts': return s.startsWith(v);
+        case 'ends': return s.endsWith(v);
+        default: return true;
+      }
+    }
+  }
+
+  function sameDay(t1, t2){
+    const a = new Date(t1), b = new Date(t2);
+    return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+  }
+
+  let filteredRows = [];
+  function applyFilters(){
+    filteredRows = rows.filter(r => evaluateGroup(filterTree, r));
+    currentPage = 1;
+    updateMatchSummary();
+    renderStats();
+    renderTable();
+  }
+
+  function updateMatchSummary(){
+    const activeConds = countActiveConditions(filterTree);
+    const shown = activeConds === 0 ? rows.length : filteredRows.length;
+    matchSummary.textContent = `${shown.toLocaleString()} of ${rows.length.toLocaleString()} rows match`;
+  }
+  function countActiveConditions(node){
+    let c = 0;
+    node.children.forEach(ch=>{ c += ch.type==='condition' ? 1 : countActiveConditions(ch); });
+    return c;
+  }
+
+  // ---------- Column visibility ----------
+  function renderColumnGrid(filter){
+    colGrid.innerHTML = '';
+    const term = (filter || '').toLowerCase();
+    columns.filter(c => c.toLowerCase().includes(term)).forEach(col=>{
+      const item = document.createElement('label');
+      item.className = 'col-item' + (visibleCols.has(col) ? ' checked' : '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = visibleCols.has(col);
+      cb.onchange = ()=>{
+        if(cb.checked) visibleCols.add(col); else visibleCols.delete(col);
+        item.classList.toggle('checked', cb.checked);
+        renderFilterTree(); // column dropdowns depend on visible set
+        renderTable();
+      };
+      const span = document.createElement('span');
+      span.textContent = col;
+      span.title = col;
+      item.appendChild(cb);
+      item.appendChild(span);
+      colGrid.appendChild(item);
+    });
+  }
+  colSearch.addEventListener('input', ()=> renderColumnGrid(colSearch.value));
+  document.getElementById('colsAllBtn').onclick = ()=>{ visibleCols = new Set(columns); renderColumnGrid(colSearch.value); renderFilterTree(); renderTable(); };
+  document.getElementById('colsNoneBtn').onclick = ()=>{ visibleCols = new Set(); renderColumnGrid(colSearch.value); renderFilterTree(); renderTable(); };
+  document.getElementById('colsResetBtn').onclick = ()=>{ visibleCols = new Set(columns.slice(0,8)); renderColumnGrid(colSearch.value); renderFilterTree(); renderTable(); };
+
+  // ---------- Result search (searches values within the already-filtered list) ----------
+  resultSearchInput.addEventListener('input', ()=>{
+    resultSearch = resultSearchInput.value;
+    resultSearchClear.style.display = resultSearch ? 'block' : 'none';
+    currentPage = 1;
+    renderTable();
+  });
+  resultSearchClear.addEventListener('click', ()=>{
+    resultSearch = '';
+    resultSearchInput.value = '';
+    resultSearchClear.style.display = 'none';
+    renderTable();
+  });
+
+  function matchesResultSearch(row, cols, term){
+    if(!term) return true;
+    const t = term.toLowerCase();
+    return cols.some(c=>{
+      const v = row[c];
+      return v !== undefined && v !== null && String(v).toLowerCase().includes(t);
+    });
+  }
+
+  function highlight(text, term){
+    if(!term) return document.createTextNode(text);
+    const idx = text.toLowerCase().indexOf(term.toLowerCase());
+    if(idx === -1) return document.createTextNode(text);
+    const before = text.slice(0, idx);
+    const match = text.slice(idx, idx + term.length);
+    const after = text.slice(idx + term.length);
+    const frag = document.createDocumentFragment();
+    frag.appendChild(document.createTextNode(before));
+    const mark = document.createElement('mark');
+    mark.textContent = match;
+    frag.appendChild(mark);
+    frag.appendChild(document.createTextNode(after));
+    return frag;
+  }
+
+  // ---------- Table ----------
+  pageSizeSelect.addEventListener('change', ()=>{ pageSize = parseInt(pageSizeSelect.value,10); currentPage = 1; renderTable(); });
+  document.getElementById('prevPageBtn').onclick = ()=>{ if(currentPage>1){ currentPage--; renderTable(); } };
+  document.getElementById('nextPageBtn').onclick = ()=>{
+    const source = getSourceRows();
+    const cols = columns.filter(c => visibleCols.has(c));
+    const total = source.filter(r => matchesResultSearch(r, cols, resultSearch)).length;
+    const maxPage = Math.max(1, Math.ceil(total/pageSize));
+    if(currentPage<maxPage){ currentPage++; renderTable(); }
+  };
+
+  function getSourceRows(){
+    return (countActiveConditions(filterTree) === 0) ? rows : filteredRows;
+  }
+
+  function renderTable(){
+    const cols = columns.filter(c => visibleCols.has(c));
+    const source = getSourceRows().filter(r => matchesResultSearch(r, cols, resultSearch));
+    const total = source.length;
+    const maxPage = Math.max(1, Math.ceil(total/pageSize));
+    if(currentPage > maxPage) currentPage = maxPage;
+    const start = (currentPage-1)*pageSize;
+    const pageRows = source.slice(start, start+pageSize);
+
+    dataTable.innerHTML = '';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    const thIdx = document.createElement('th');
+    thIdx.textContent = '#';
+    trh.appendChild(thIdx);
+    cols.forEach(c=>{
+      const th = document.createElement('th');
+      th.textContent = c;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    dataTable.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if(cols.length === 0){
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 1;
+      td.style.color = 'var(--muted)';
+      td.textContent = 'No columns selected — pick some in the Visible columns panel above.';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else if(pageRows.length === 0){
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = cols.length+1;
+      td.style.color = 'var(--muted)';
+      td.textContent = resultSearch ? 'No rows match your search within the filtered results.' : 'No rows match the current filters.';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      pageRows.forEach((r, i)=>{
+        const tr = document.createElement('tr');
+        const tdIdx = document.createElement('td');
+        tdIdx.textContent = start + i + 1;
+        tr.appendChild(tdIdx);
+        cols.forEach(c=>{
+          const td = document.createElement('td');
+          const v = r[c];
+          const text = (v === undefined || v === null) ? '' : String(v);
+          td.title = text;
+          td.appendChild(highlight(text, resultSearch));
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    dataTable.appendChild(tbody);
+
+    rowRangeEl.textContent = total === 0 ? 'No rows' : `Showing ${start+1}–${Math.min(start+pageSize,total)} of ${total.toLocaleString()}`;
+    pageIndicator.textContent = `Page ${currentPage} / ${maxPage}`;
+    document.getElementById('prevPageBtn').disabled = currentPage<=1;
+    document.getElementById('nextPageBtn').disabled = currentPage>=maxPage;
+  }
+
+  function renderStats(){
+    const activeConds = countActiveConditions(filterTree);
+    const shown = activeConds === 0 ? rows.length : filteredRows.length;
+    statsStrip.innerHTML = `
+      <div class="stat-pill">rows <b>${rows.length.toLocaleString()}</b></div>
+      <div class="stat-pill">columns <b>${columns.length.toLocaleString()}</b></div>
+      <div class="stat-pill filtered">matching <b>${shown.toLocaleString()}</b></div>
+    `;
+  }
+
+  function toast(msg){
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(()=> t.remove(), 3200);
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+})();
