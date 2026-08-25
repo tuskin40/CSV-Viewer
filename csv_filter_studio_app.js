@@ -1,4 +1,5 @@
 (function(){
+
   "use strict";
 
   // ---------- State ----------
@@ -11,6 +12,8 @@
   let idCounter = 1;
   const nextId = () => 'n' + (idCounter++);
   let resultSearch = '';
+  let sortColumn = '';
+  let sortDirection = 'asc';
 
   let filterTree = { id: nextId(), type: 'group', op: 'AND', children: [] };
 
@@ -29,6 +32,8 @@
   const rowRangeEl = document.getElementById('rowRange');
   const pageIndicator = document.getElementById('pageIndicator');
   const pageSizeSelect = document.getElementById('pageSizeSelect');
+  const sortColumnSelect = document.getElementById('sortColumnSelect');
+  const sortDirectionSelect = document.getElementById('sortDirectionSelect');
   const resultSearchInput = document.getElementById('resultSearchInput');
   const resultSearchClear = document.getElementById('resultSearchClear');
 
@@ -48,54 +53,6 @@
     ]
   };
 
-  // ---------- Built-in CSV parser (no external libraries) ----------
-  function parseCSV(text){
-    const rows = [];
-    let row = [];
-    let field = '';
-    let quoted = false;
-    for(let i=0; i<text.length; i++){
-      const c = text[i];
-      if(quoted){
-        if(c === '"'){
-          if(text[i+1] === '"'){ field += '"'; i++; }
-          else quoted = false;
-        } else field += c;
-      } else if(c === '"'){
-        quoted = true;
-      } else if(c === ','){
-        row.push(field); field = '';
-      } else if(c === '\n'){
-        row.push(field);
-        if(row.length > 1 || row[0] !== '') rows.push(row);
-        row = []; field = '';
-      } else if(c === '\r'){
-        if(text[i+1] !== '\n'){
-          row.push(field);
-          if(row.length > 1 || row[0] !== '') rows.push(row);
-          row = []; field = '';
-        }
-      } else field += c;
-    }
-    if(field !== '' || row.length){
-      row.push(field);
-      if(row.length > 1 || row[0] !== '') rows.push(row);
-    }
-    if(!rows.length) return [];
-    const headers = makeUniqueHeaders(rows[0]);
-    return [headers, ...rows.slice(1)];
-  }
-
-  function makeUniqueHeaders(headers){
-    const used = new Map();
-    return headers.map((value, index) => {
-      let name = String(value ?? '').trim() || `Column ${index + 1}`;
-      const count = used.get(name) || 0;
-      used.set(name, count + 1);
-      return count ? `${name} (${count + 1})` : name;
-    });
-  }
-
   // ---------- Upload handling ----------
   uploadZone.addEventListener('click', (e)=>{ if(e.target.tagName!=='BUTTON') fileInput.click(); });
   uploadZone.addEventListener('dragover', (e)=>{ e.preventDefault(); uploadZone.classList.add('drag'); });
@@ -113,24 +70,17 @@
       toast('That doesn\'t look like a CSV file.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = function(e){
-      try {
-        const parsed = parseCSV(e.target.result);
-        if(!parsed.length) throw new Error('The CSV is empty.');
-        const fields = parsed[0];
-        const data = parsed.slice(1).map(row => {
-          const obj = {};
-          fields.forEach((field, i) => obj[field] = row[i] ?? '');
-          return obj;
-        });
-        loadData(data, fields, file.name);
-      } catch(err) {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
+      complete: function(results){
+        loadData(results.data, results.meta.fields || [], file.name);
+      },
+      error: function(err){
         toast('Could not parse CSV: ' + err.message);
       }
-    };
-    reader.onerror = function(){ toast('Could not read the selected file.'); };
-    reader.readAsText(file);
+    });
   }
 
   function loadData(data, fields, fileName){
@@ -143,6 +93,8 @@
     currentPage = 1;
     resultSearch = '';
     resultSearchInput.value = '';
+    sortColumn = '';
+    sortDirection = 'asc';
 
     fileChipHolder.innerHTML = '';
     const chip = document.createElement('div');
@@ -161,6 +113,7 @@
     renderStats();
     renderFilterTree();
     renderColumnGrid();
+    renderSortOptions();
     renderTable();
   }
 
@@ -169,6 +122,9 @@
     filterTree = { id: nextId(), type:'group', op:'AND', children: [] };
     resultSearch = '';
     resultSearchInput.value = '';
+    sortColumn = '';
+    sortDirection = 'asc';
+    renderSortOptions();
     fileInput.value = '';
     fileChipHolder.innerHTML = '';
     appBody.classList.add('hidden');
@@ -517,6 +473,7 @@
         if(cb.checked) visibleCols.add(col); else visibleCols.delete(col);
         item.classList.toggle('checked', cb.checked);
         renderFilterTree(); // column dropdowns depend on visible set
+        renderSortOptions(); // sorting is limited to the visible set
         renderTable();
       };
       const span = document.createElement('span');
@@ -528,9 +485,9 @@
     });
   }
   colSearch.addEventListener('input', ()=> renderColumnGrid(colSearch.value));
-  document.getElementById('colsAllBtn').onclick = ()=>{ visibleCols = new Set(columns); renderColumnGrid(colSearch.value); renderFilterTree(); renderTable(); };
-  document.getElementById('colsNoneBtn').onclick = ()=>{ visibleCols = new Set(); renderColumnGrid(colSearch.value); renderFilterTree(); renderTable(); };
-  document.getElementById('colsResetBtn').onclick = ()=>{ visibleCols = new Set(columns.slice(0,8)); renderColumnGrid(colSearch.value); renderFilterTree(); renderTable(); };
+  document.getElementById('colsAllBtn').onclick = ()=>{ visibleCols = new Set(columns); renderColumnGrid(colSearch.value); renderFilterTree(); renderSortOptions(); renderTable(); };
+  document.getElementById('colsNoneBtn').onclick = ()=>{ visibleCols = new Set(); renderColumnGrid(colSearch.value); renderFilterTree(); renderSortOptions(); renderTable(); };
+  document.getElementById('colsResetBtn').onclick = ()=>{ visibleCols = new Set(columns.slice(0,8)); renderColumnGrid(colSearch.value); renderFilterTree(); renderSortOptions(); renderTable(); };
 
   // ---------- Result search (searches values within the already-filtered list) ----------
   resultSearchInput.addEventListener('input', ()=>{
@@ -554,6 +511,77 @@
       return v !== undefined && v !== null && String(v).toLowerCase().includes(t);
     });
   }
+
+  // ---------- Sorting (restricted to columns currently shown in the table) ----------
+  function renderSortOptions(){
+    const visibleList = columns.filter(c => visibleCols.has(c));
+    if(!visibleList.includes(sortColumn)) sortColumn = '';
+
+    sortColumnSelect.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'No sorting';
+    sortColumnSelect.appendChild(placeholder);
+    visibleList.forEach(col=>{
+      const option = document.createElement('option');
+      option.value = col;
+      option.textContent = col;
+      option.selected = col === sortColumn;
+      sortColumnSelect.appendChild(option);
+    });
+    sortColumnSelect.value = sortColumn;
+    sortColumnSelect.disabled = visibleList.length === 0;
+    sortDirectionSelect.value = sortDirection;
+    sortDirectionSelect.disabled = visibleList.length === 0;
+  }
+
+  sortColumnSelect.addEventListener('change', ()=>{
+    sortColumn = sortColumnSelect.value;
+    currentPage = 1;
+    renderTable();
+  });
+  sortDirectionSelect.addEventListener('change', ()=>{
+    sortDirection = sortDirectionSelect.value;
+    currentPage = 1;
+    renderTable();
+  });
+
+  function sortRows(source){
+    if(!sortColumn) return source;
+    const type = columnTypes[sortColumn] || 'text';
+    const direction = sortDirection === 'desc' ? -1 : 1;
+    return source.slice().sort((a, b)=>{
+      const av = a[sortColumn], bv = b[sortColumn];
+      const aEmpty = av === undefined || av === null || String(av).trim() === '';
+      const bEmpty = bv === undefined || bv === null || String(bv).trim() === '';
+      if(aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : (aEmpty ? 1 : -1);
+      if(type === 'number') return (parseFloat(av) - parseFloat(bv)) * direction;
+      if(type === 'date') return (Date.parse(av) - Date.parse(bv)) * direction;
+      return String(av).localeCompare(String(bv), undefined, { numeric:true, sensitivity:'base' }) * direction;
+    });
+  }
+
+  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{
+    const cols = columns.filter(c => visibleCols.has(c));
+    if(cols.length === 0){
+      toast('Select at least one visible column before exporting.');
+      return;
+    }
+    const data = sortRows(getSourceRows());
+    const escapeCsvValue = value => {
+      const text = value === undefined || value === null ? '' : String(value);
+      return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+    };
+    const csv = [cols, ...data.map(row => cols.map(col => row[col]))]
+      .map(record => record.map(escapeCsvValue).join(','))
+      .join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'filtered-data.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  });
 
   function highlight(text, term){
     if(!term) return document.createTextNode(text);
@@ -588,7 +616,7 @@
 
   function renderTable(){
     const cols = columns.filter(c => visibleCols.has(c));
-    const source = getSourceRows().filter(r => matchesResultSearch(r, cols, resultSearch));
+    const source = sortRows(getSourceRows().filter(r => matchesResultSearch(r, cols, resultSearch)));
     const total = source.length;
     const maxPage = Math.max(1, Math.ceil(total/pageSize));
     if(currentPage > maxPage) currentPage = maxPage;
@@ -674,3 +702,5 @@
   }
 
 })();
+
+

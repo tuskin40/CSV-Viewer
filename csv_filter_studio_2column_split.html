@@ -4,9 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CSV Filter Studio</title>
-
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="csv_filter_studio_theme.css">
 <link rel="stylesheet" href="csv_filter_studio_structure.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -57,6 +60,18 @@
       <div class="panel-head">
         <div class="panel-title"><span class="num">3</span> Data</div>
         <div class="toolbar">
+          <button class="btn small" id="exportCsvBtn">Export filtered CSV</button>
+          <label class="sort-control">
+            Sort by
+            <select id="sortColumnSelect" aria-label="Sort results by column"></select>
+          </label>
+          <label class="sort-control">
+            Order
+            <select id="sortDirectionSelect" aria-label="Sort direction">
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          </label>
           <label style="font-size:12px;color:var(--fg-dim);display:flex;align-items:center;gap:6px;">
             Rows per page
             <select id="pageSizeSelect">
@@ -93,7 +108,6 @@
   </div>
 
 </div>
-
 <script src="csv_filter_studio_app.js"></script>
 </body>
 </html>
