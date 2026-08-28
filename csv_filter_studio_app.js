@@ -54,6 +54,9 @@
   };
 
   // ---------- Upload handling ----------
+  // CSV files larger than this are rejected before Papa Parse reads them into memory.
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MiB
+
   uploadZone.addEventListener('click', (e)=>{ if(e.target.tagName!=='BUTTON') fileInput.click(); });
   uploadZone.addEventListener('dragover', (e)=>{ e.preventDefault(); uploadZone.classList.add('drag'); });
   uploadZone.addEventListener('dragleave', ()=> uploadZone.classList.remove('drag'));
@@ -70,6 +73,14 @@
       toast('That doesn\'t look like a CSV file.');
       return;
     }
+
+    // Check the file size before parsing so oversized files are never loaded into memory.
+    if(file.size > MAX_FILE_SIZE){
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      toast(`CSV file is too large (${sizeMb} MB). Maximum allowed size is 10 MB.`);
+      return;
+    }
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
