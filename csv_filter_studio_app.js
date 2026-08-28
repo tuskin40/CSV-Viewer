@@ -642,6 +642,7 @@
     trh.appendChild(thIdx);
     cols.forEach(c=>{
       const th = document.createElement('th');
+      if(columnTypes[c] === 'number' || columnTypes[c] === 'date') th.className = 'table-value--right';
       th.textContent = c;
       trh.appendChild(th);
     });
@@ -673,6 +674,7 @@
         tr.appendChild(tdIdx);
         cols.forEach(c=>{
           const td = document.createElement('td');
+          if(columnTypes[c] === 'number' || columnTypes[c] === 'date') td.className = 'table-value--right';
           const v = r[c];
           const text = (v === undefined || v === null) ? '' : String(v);
           td.title = text;
