@@ -38,7 +38,7 @@ body{
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--muted);}
 
-.wrap{max-width:1400px;margin:0 auto;padding:36px 28px 80px;}
+.wrap{width:100%;max-width:none;margin:0;padding:36px 28px 80px;}
 
 header.top{
   display:flex; align-items:flex-end; justify-content:space-between; gap:24px;
