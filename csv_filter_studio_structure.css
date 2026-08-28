@@ -1,5 +1,36 @@
 /* Layout rules are kept separate from the visual theme. */
-#appBody { display:grid; grid-template-columns:minmax(280px, 1fr) minmax(0, 2fr); gap:16px; align-items:start; }
+#appBody {
+  display:grid;
+  grid-template-columns:minmax(280px, 1fr) minmax(0, 2fr);
+  grid-template-rows:auto auto;
+  gap:16px;
+  align-items:stretch;
+  min-height:calc(100vh - 260px);
+}
 #appBody > .panel:nth-child(1), #appBody > .panel:nth-child(2) { grid-column:1; }
-#appBody > .panel:nth-child(3) { grid-column:2; grid-row:1 / span 2; min-width:0; }
-@media (max-width: 900px) { #appBody { grid-template-columns:1fr; } #appBody > .panel:nth-child(1), #appBody > .panel:nth-child(2), #appBody > .panel:nth-child(3) { grid-column:1; grid-row:auto; } }
+#appBody > .panel:nth-child(3) {
+  grid-column:2;
+  grid-row:1 / span 2;
+  min-width:0;
+  min-height:0;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+}
+#appBody > .panel:nth-child(3) .table-scroll {
+  flex:1 1 auto;
+  min-height:0;
+}
+@media (max-width: 900px) {
+  #appBody {
+    grid-template-columns:1fr;
+    min-height:0;
+  }
+  #appBody > .panel:nth-child(1), #appBody > .panel:nth-child(2), #appBody > .panel:nth-child(3) {
+    grid-column:1;
+    grid-row:auto;
+  }
+  #appBody > .panel:nth-child(3) {
+    height:auto;
+  }
+}
