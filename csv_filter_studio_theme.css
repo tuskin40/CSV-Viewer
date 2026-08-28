@@ -41,8 +41,9 @@ body{
 .wrap{width:100%;max-width:none;margin:0;padding:36px 28px 80px;}
 
 header.top{
-  display:flex; align-items:flex-end; justify-content:space-between; gap:24px;
-  margin-bottom:28px; flex-wrap:wrap;
+  display:flex; align-items:flex-start; justify-content:space-between; gap:24px;
+  /* margin-bottom:28px;  */
+  flex-wrap:wrap;
 }
 .brand-eyebrow{
   font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;

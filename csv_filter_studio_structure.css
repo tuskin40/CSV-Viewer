@@ -1,7 +1,7 @@
 /* Layout rules are kept separate from the visual theme. */
 #appBody {
   display:grid;
-  grid-template-columns:minmax(280px, 1fr) minmax(0, 2fr);
+  grid-template-columns:minmax(280px, 1fr) minmax(0, 3fr);
   grid-template-rows:auto auto;
   gap:16px;
   align-items:stretch;
