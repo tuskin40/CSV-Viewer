@@ -21,6 +21,16 @@
   flex:1 1 auto;
   min-height:0;
 }
+
+/* Numeric and date table values are easier to scan when right-aligned. */
+.numeric-cell {
+  text-align:right !important;
+}
+
+thead th.numeric-cell {
+  text-align:right !important;
+}
+
 @media (max-width: 900px) {
   #appBody {
     grid-template-columns:1fr;
