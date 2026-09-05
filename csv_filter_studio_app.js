@@ -14,6 +14,7 @@
   let resultSearch = '';
   let sortColumn = '';
   let sortDirection = 'asc';
+  let highlightFilter = false;
   let activeFile = null;
 
   let filterTree = { id: nextId(), type: 'group', op: 'AND', children: [] };
@@ -30,6 +31,7 @@
   const statsStrip = document.getElementById('statsStrip');
   const filterRoot = document.getElementById('filterRoot');
   const matchSummary = document.getElementById('matchSummary');
+  const filterHighlightToggle = document.getElementById('filterHighlightToggle');
   const colGrid = document.getElementById('colGrid');
   const colSearch = document.getElementById('colSearch');
   const dataTable = document.getElementById('dataTable');
@@ -40,6 +42,15 @@
   const sortDirectionSelect = document.getElementById('sortDirectionSelect');
   const resultSearchInput = document.getElementById('resultSearchInput');
   const resultSearchClear = document.getElementById('resultSearchClear');
+
+  filterHighlightToggle.addEventListener('click', ()=>{
+    highlightFilter = !highlightFilter;
+    filterHighlightToggle.classList.toggle('active', highlightFilter);
+    filterHighlightToggle.setAttribute('aria-pressed', String(highlightFilter));
+    currentPage = 1;
+    updateMatchSummary();
+    renderTable();
+  });
 
   const OPERATORS = {
     text: [
@@ -512,7 +523,8 @@
   function updateMatchSummary(){
     const activeConds = countActiveConditions(filterTree);
     const shown = activeConds === 0 ? rows.length : filteredRows.length;
-    matchSummary.textContent = `${shown.toLocaleString()} of ${rows.length.toLocaleString()} rows match`;
+    const mode = highlightFilter && activeConds > 0 ? ' — highlighting matches' : '';
+    matchSummary.textContent = `${shown.toLocaleString()} of ${rows.length.toLocaleString()} rows match${mode}`;
   }
   function countActiveConditions(node){
     let c = 0;
@@ -628,7 +640,7 @@
       toast('Select at least one visible column before exporting.');
       return;
     }
-    const data = sortRows(getSourceRows());
+    const data = sortRows(countActiveConditions(filterTree) === 0 ? rows : filteredRows);
     const escapeCsvValue = value => {
       const text = value === undefined || value === null ? '' : String(value);
       return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
@@ -672,7 +684,7 @@
   };
 
   function getSourceRows(){
-    return (countActiveConditions(filterTree) === 0) ? rows : filteredRows;
+    return (highlightFilter || countActiveConditions(filterTree) === 0) ? rows : filteredRows;
   }
 
   function renderTable(){
@@ -719,6 +731,9 @@
     } else {
       pageRows.forEach((r, i)=>{
         const tr = document.createElement('tr');
+        if(highlightFilter && countActiveConditions(filterTree) > 0 && evaluateGroup(filterTree, r)){
+          tr.className = 'filter-match';
+        }
         const tdIdx = document.createElement('td');
         tdIdx.textContent = start + i + 1;
         tr.appendChild(tdIdx);
