@@ -68,13 +68,14 @@ h1 span{color:var(--purple);}
 .stat-pill.filtered b{color:var(--green);}
 
 /* Upload zone */
+.upload-row{display:flex;align-items:stretch;gap:14px;margin-bottom:26px;}
 .upload-zone{
   border:1.5px dashed var(--border); border-radius:var(--radius);
   background:var(--panel);
   padding:14px 20px; cursor:pointer;
   display:flex; align-items:center; gap:14px; flex-wrap:wrap;
   transition:border-color .15s ease, background .15s ease;
-  margin-bottom:10px;
+  flex:1 1 420px;
 }
 .upload-zone:hover, .upload-zone.drag{
   border-color:var(--teal); background:var(--panel-raised);
@@ -84,12 +85,13 @@ h1 span{color:var(--purple);}
 .upload-zone .primary{font-family:var(--display); font-weight:700; font-size:13.5px; color:var(--fg);}
 .upload-zone .secondary{font-size:11.5px; color:var(--muted);}
 .upload-zone input[type=file]{display:none;}
-.import-options{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-bottom:26px;padding:10px 14px;background:var(--panel);border:1px solid var(--border-soft);border-radius:var(--radius);}
+.import-options{display:flex;align-content:center;align-items:end;gap:10px;flex:0 1 430px;flex-wrap:wrap;padding:10px 14px;background:var(--panel);border:1px solid var(--border-soft);border-radius:var(--radius);}
 .import-options label{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
 .import-options input{width:76px;min-height:30px;padding:5px 7px;background:var(--bg-alt);border:1px solid var(--border);border-radius:5px;color:var(--fg);font:12px var(--mono);}
 .import-options #delimiterInput{width:58px;}
 .import-options-help{max-width:180px;font-size:10px;color:var(--muted);line-height:1.35;}
 .import-options-help code{font-family:var(--mono);color:var(--teal-soft);}
+@media (max-width:900px){.upload-row{flex-direction:column;}.import-options{flex-basis:auto;}}
 .file-chip{
   display:inline-flex; align-items:center; gap:10px; background:var(--panel-raised);
   border:1px solid var(--border-soft); border-radius:999px; padding:6px 8px 6px 14px;
