@@ -68,13 +68,14 @@ h1 span{color:var(--purple);}
 .stat-pill.filtered b{color:var(--green);}
 
 /* Upload zone */
+.upload-row{display:flex;align-items:stretch;gap:14px;margin-bottom:26px;}
 .upload-zone{
   border:1.5px dashed var(--border); border-radius:var(--radius);
   background:var(--panel);
-  padding:14px 20px; cursor:pointer;
+  padding:8px 20px; cursor:pointer;
   display:flex; align-items:center; gap:14px; flex-wrap:wrap;
   transition:border-color .15s ease, background .15s ease;
-  margin-bottom:26px;
+  flex:1 1 420px;
 }
 .upload-zone:hover, .upload-zone.drag{
   border-color:var(--teal); background:var(--panel-raised);
@@ -84,12 +85,20 @@ h1 span{color:var(--purple);}
 .upload-zone .primary{font-family:var(--display); font-weight:700; font-size:13.5px; color:var(--fg);}
 .upload-zone .secondary{font-size:11.5px; color:var(--muted);}
 .upload-zone input[type=file]{display:none;}
+<<<<<<< HEAD
 .import-options{display:flex;align-items:end;gap:10px;flex-wrap:wrap;}
+=======
+.import-options{display:flex;align-content:center;align-items:end;gap:10px;flex:0 1 560px;flex-wrap:wrap;padding:10px 14px;background:var(--panel);border:1px solid var(--border-soft);border-radius:var(--radius);}
+>>>>>>> 7c6a9c5517807d62ef5d72ce713fb55f44e6b837
 .import-options label{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
 .import-options input{width:76px;min-height:30px;padding:5px 7px;background:var(--bg-alt);border:1px solid var(--border);border-radius:5px;color:var(--fg);font:12px var(--mono);}
 .import-options #delimiterInput{width:58px;}
 .import-options-help{max-width:180px;font-size:10px;color:var(--muted);line-height:1.35;}
 .import-options-help code{font-family:var(--mono);color:var(--teal-soft);}
+<<<<<<< HEAD
+=======
+@media (max-width:900px){.upload-row{flex-direction:column;}.import-options{flex-basis:auto;}}
+>>>>>>> 7c6a9c5517807d62ef5d72ce713fb55f44e6b837
 .file-chip{
   display:inline-flex; align-items:center; gap:10px; background:var(--panel-raised);
   border:1px solid var(--border-soft); border-radius:999px; padding:6px 8px 6px 14px;
@@ -252,7 +261,7 @@ thead th{
 thead th:first-child{position:sticky; left:0; z-index:3; background:var(--panel-raised);}
 .table-value--right{text-align:right;}
 tbody td{
-  padding:9px 14px; border-bottom:1px solid var(--border-soft); color:var(--fg-dim);
+  padding:4px 8px; border-bottom:1px solid var(--border-soft); color:var(--fg-dim);
   white-space:nowrap; max-width:260px; overflow:hidden; text-overflow:ellipsis;
 }
 tbody td:first-child{position:sticky; left:0; background:var(--bg-alt); color:var(--muted); font-weight:600;}

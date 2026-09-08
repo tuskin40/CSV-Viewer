@@ -23,13 +23,33 @@
     <div class="stats-strip" id="statsStrip"></div>
   </header>
 
-  <div class="upload-zone" id="uploadZone">
-    <input type="file" id="fileInput" accept=".csv,text/csv">
-    <div class="icon">⌁</div>
-    <div class="copy">
-      <div class="primary">Drop a CSV here, or click to browse</div>
-      <div class="secondary">Built and tested around 1000 columns × 2000 rows.</div>
+  <div class="upload-row">
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".csv,text/csv">
+      <div class="icon">⌁</div>
+      <div class="copy">
+        <div class="primary">Drop a CSV here, or click to browse</div>
+        <div class="secondary">Built and tested around 1000 columns × 2000 rows.</div>
+      </div>
+      <div id="fileChipHolder"></div>
     </div>
+
+    <div class="import-options" aria-label="Import options">
+      <label>
+        Delimiter
+        <input id="delimiterInput" type="text" value="," aria-label="Delimiter" spellcheck="false">
+      </label>
+      <label>
+        Skip rows
+        <input id="skipRowsInput" type="number" value="0" min="0" step="1" aria-label="Rows to skip">
+      </label>
+      <label>
+        Header row
+        <input id="headerRowInput" type="number" value="1" min="0" step="1" aria-label="Header row">
+      </label>
+      <span class="import-options-help">Use <code>\t</code> for tab. Header row 0 creates column names automatically.</span>
+    </div>
+<<<<<<< HEAD
     <div class="import-options" aria-label="Import options">
       <label>
         Delimiter
@@ -46,6 +66,8 @@
       <span class="import-options-help">Use <code>\t</code> for tab. Header row 0 creates column names automatically.</span>
     </div>
     <div id="fileChipHolder"></div>
+=======
+>>>>>>> 7c6a9c5517807d62ef5d72ce713fb55f44e6b837
   </div>
 
   <div id="appBody" class="hidden">
@@ -94,9 +116,10 @@
             Rows per page
             <select id="pageSizeSelect">
               <option value="25">25</option>
-              <option value="50" selected>50</option>
+              <option value="50">50</option>
               <option value="100">100</option>
-              <option value="250">250</option>
+              <option value="250" selected>250</option>
+              <option value="500">500</option>
             </select>
           </label>
         </div>
