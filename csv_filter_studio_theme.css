@@ -254,7 +254,7 @@ thead th{
 thead th:first-child{position:sticky; left:0; z-index:3; background:var(--panel-raised);}
 .table-value--right{text-align:right;}
 tbody td{
-  padding:9px 14px; border-bottom:1px solid var(--border-soft); color:var(--fg-dim);
+  padding:4px 8px; border-bottom:1px solid var(--border-soft); color:var(--fg-dim);
   white-space:nowrap; max-width:260px; overflow:hidden; text-overflow:ellipsis;
 }
 tbody td:first-child{position:sticky; left:0; background:var(--bg-alt); color:var(--muted); font-weight:600;}
