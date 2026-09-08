@@ -30,21 +30,6 @@
       <div class="primary">Drop a CSV here, or click to browse</div>
       <div class="secondary">Built and tested around 1000 columns × 2000 rows.</div>
     </div>
-    <div class="import-options" aria-label="Import options">
-      <label>
-        Delimiter
-        <input id="delimiterInput" type="text" value="," aria-label="Delimiter" spellcheck="false">
-      </label>
-      <label>
-        Skip rows
-        <input id="skipRowsInput" type="number" value="0" min="0" step="1" aria-label="Rows to skip">
-      </label>
-      <label>
-        Header row
-        <input id="headerRowInput" type="number" value="1" min="0" step="1" aria-label="Header row">
-      </label>
-      <span class="import-options-help">Use <code>\t</code> for tab. Header row 0 creates column names automatically.</span>
-    </div>
     <div id="fileChipHolder"></div>
   </div>
 
@@ -53,10 +38,7 @@
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title"><span class="num">1</span> Filter builder</div>
-        <div class="filter-panel-actions">
-          <button class="btn small filter-highlight-toggle" id="filterHighlightToggle" type="button" aria-pressed="false">Highlight filter</button>
-          <div class="panel-sub" id="matchSummary"></div>
-        </div>
+        <div class="panel-sub" id="matchSummary"></div>
       </div>
       <div id="filterRoot"></div>
     </div>

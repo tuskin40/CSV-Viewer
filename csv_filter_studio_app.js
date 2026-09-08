@@ -14,18 +14,24 @@
   let resultSearch = '';
   let sortColumn = '';
   let sortDirection = 'asc';
+  let highlightFilter = false;
+  let activeFile = null;
 
   let filterTree = { id: nextId(), type: 'group', op: 'AND', children: [] };
 
   // ---------- DOM refs ----------
   const uploadZone = document.getElementById('uploadZone');
   const fileInput = document.getElementById('fileInput');
+  const delimiterInput = document.getElementById('delimiterInput');
+  const skipRowsInput = document.getElementById('skipRowsInput');
+  const headerRowInput = document.getElementById('headerRowInput');
   const fileChipHolder = document.getElementById('fileChipHolder');
   const appBody = document.getElementById('appBody');
   const emptyState = document.getElementById('emptyState');
   const statsStrip = document.getElementById('statsStrip');
   const filterRoot = document.getElementById('filterRoot');
   const matchSummary = document.getElementById('matchSummary');
+  const filterHighlightToggle = document.getElementById('filterHighlightToggle');
   const colGrid = document.getElementById('colGrid');
   const colSearch = document.getElementById('colSearch');
   const dataTable = document.getElementById('dataTable');
@@ -36,6 +42,15 @@
   const sortDirectionSelect = document.getElementById('sortDirectionSelect');
   const resultSearchInput = document.getElementById('resultSearchInput');
   const resultSearchClear = document.getElementById('resultSearchClear');
+
+  filterHighlightToggle.addEventListener('click', ()=>{
+    highlightFilter = !highlightFilter;
+    filterHighlightToggle.classList.toggle('active', highlightFilter);
+    filterHighlightToggle.setAttribute('aria-pressed', String(highlightFilter));
+    currentPage = 1;
+    updateMatchSummary();
+    renderTable();
+  });
 
   const OPERATORS = {
     text: [
@@ -57,7 +72,9 @@
   // CSV files larger than this are rejected before Papa Parse reads them into memory.
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MiB
 
-  uploadZone.addEventListener('click', (e)=>{ if(e.target.tagName!=='BUTTON') fileInput.click(); });
+  uploadZone.addEventListener('click', (e)=>{
+    if(e.target.tagName !== 'BUTTON' && !e.target.closest('.import-options')) fileInput.click();
+  });
   uploadZone.addEventListener('dragover', (e)=>{ e.preventDefault(); uploadZone.classList.add('drag'); });
   uploadZone.addEventListener('dragleave', ()=> uploadZone.classList.remove('drag'));
   uploadZone.addEventListener('drop', (e)=>{
@@ -67,6 +84,16 @@
   fileInput.addEventListener('change', (e)=>{
     if(e.target.files.length) handleFile(e.target.files[0]);
   });
+  [delimiterInput, skipRowsInput, headerRowInput].forEach(input=>{
+    input.addEventListener('change', ()=>{ if(activeFile) handleFile(activeFile); });
+  });
+
+  function importSettings(){
+    const delimiter = delimiterInput.value === '\\t' ? '\t' : delimiterInput.value;
+    const skipRows = Math.max(0, parseInt(skipRowsInput.value, 10) || 0);
+    const headerRow = Math.max(0, parseInt(headerRowInput.value, 10) || 0);
+    return { delimiter, skipRows, headerRow };
+  }
 
   function handleFile(file){
     if(!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv'){
@@ -81,12 +108,45 @@
       return;
     }
 
+    const settings = importSettings();
+    if(!settings.delimiter){
+      toast('Enter a delimiter, such as a comma, semicolon, pipe, or \\t for tab.');
+      return;
+    }
+    activeFile = file;
+
     Papa.parse(file, {
-      header: true,
+      delimiter: settings.delimiter,
+      header: false,
       skipEmptyLines: true,
       dynamicTyping: false,
       complete: function(results){
-        loadData(results.data, results.meta.fields || [], file.name);
+        const importedRows = results.data.slice(settings.skipRows);
+        if(settings.headerRow > importedRows.length){
+          toast(`Header row ${settings.headerRow} is beyond the available rows after skipping ${settings.skipRows}.`);
+          return;
+        }
+
+        let fields, dataRows;
+        if(settings.headerRow === 0){
+          const columnCount = importedRows.reduce((max, row)=>Math.max(max, row.length), 0);
+          fields = Array.from({length: columnCount}, (_, i)=>`Column ${i + 1}`);
+          dataRows = importedRows;
+        } else {
+          fields = importedRows[settings.headerRow - 1].map((field, i)=>String(field || `Column ${i + 1}`).trim());
+          dataRows = importedRows.slice(settings.headerRow);
+        }
+
+        const uniqueFields = new Set();
+        fields = fields.map((field, i)=>{
+          const base = field || `Column ${i + 1}`;
+          let name = base, suffix = 2;
+          while(uniqueFields.has(name)) name = `${base} (${suffix++})`;
+          uniqueFields.add(name);
+          return name;
+        });
+        const data = dataRows.map(row=>Object.fromEntries(fields.map((field, i)=>[field, row[i]])));
+        loadData(data, fields, file.name);
       },
       error: function(err){
         toast('Could not parse CSV: ' + err.message);
@@ -137,6 +197,7 @@
     sortDirection = 'asc';
     renderSortOptions();
     fileInput.value = '';
+    activeFile = null;
     fileChipHolder.innerHTML = '';
     appBody.classList.add('hidden');
     emptyState.classList.remove('hidden');
@@ -462,7 +523,8 @@
   function updateMatchSummary(){
     const activeConds = countActiveConditions(filterTree);
     const shown = activeConds === 0 ? rows.length : filteredRows.length;
-    matchSummary.textContent = `${shown.toLocaleString()} of ${rows.length.toLocaleString()} rows match`;
+    const mode = highlightFilter && activeConds > 0 ? ' — highlighting matches' : '';
+    matchSummary.textContent = `${shown.toLocaleString()} of ${rows.length.toLocaleString()} rows match${mode}`;
   }
   function countActiveConditions(node){
     let c = 0;
@@ -578,7 +640,7 @@
       toast('Select at least one visible column before exporting.');
       return;
     }
-    const data = sortRows(getSourceRows());
+    const data = sortRows(countActiveConditions(filterTree) === 0 ? rows : filteredRows);
     const escapeCsvValue = value => {
       const text = value === undefined || value === null ? '' : String(value);
       return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
@@ -622,7 +684,7 @@
   };
 
   function getSourceRows(){
-    return (countActiveConditions(filterTree) === 0) ? rows : filteredRows;
+    return (highlightFilter || countActiveConditions(filterTree) === 0) ? rows : filteredRows;
   }
 
   function renderTable(){
@@ -669,6 +731,9 @@
     } else {
       pageRows.forEach((r, i)=>{
         const tr = document.createElement('tr');
+        if(highlightFilter && countActiveConditions(filterTree) > 0 && evaluateGroup(filterTree, r)){
+          tr.className = 'filter-match';
+        }
         const tdIdx = document.createElement('td');
         tdIdx.textContent = start + i + 1;
         tr.appendChild(tdIdx);
