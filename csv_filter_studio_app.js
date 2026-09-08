@@ -8,7 +8,7 @@
   let rows = [];           // array of objects
   let visibleCols = new Set();
   let currentPage = 1;
-  let pageSize = 200;
+  let pageSize = 250;
   let idCounter = 1;
   const nextId = () => 'n' + (idCounter++);
   let resultSearch = '';
